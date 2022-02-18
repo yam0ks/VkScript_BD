@@ -27,7 +27,7 @@ namespace VkScript_BD
             this.Access_Token = Access_Token;
             Owner_ID = -Group_ID;
         }
-
+        
         public string MakeGetRequest(string URL)
         {
             HttpWebRequest HttpWebRequest = (HttpWebRequest)WebRequest.Create(URL);
@@ -40,7 +40,7 @@ namespace VkScript_BD
             return Response;
         }
 
-        public  void MakePostRequest(string Owner_ID, string ID, string message)
+        public string MakePostRequest(string Owner_ID, string ID, string message)
         {
             WebRequest Request = WebRequest.Create("https://api.vk.com/method/wall.post");
             Request.Method = "POST";
@@ -51,7 +51,13 @@ namespace VkScript_BD
             Stream DataStream = Request.GetRequestStream();
             DataStream.Write(ByteArray, 0, ByteArray.Length);
             DataStream.Close();
-            Request.GetResponse();
+            WebResponse Response = Request.GetResponse();
+            string response;
+            using (StreamReader Streamreader = new StreamReader(Response.GetResponseStream()))
+            {
+                response = Streamreader.ReadToEnd();
+            }
+            return response;
         }
 
         static string ToString(UsersInfo.ItemsInfo Obj)
@@ -66,7 +72,7 @@ namespace VkScript_BD
             string Day = DateTime.Today.ToString("d.M").Substring(0, Index);
             string Month = DateTime.Today.ToString("d.M").Substring(Index + 1);
 
-            string URL = $"https://api.vk.com/method/users.search?v={Version}&group_id={Group_Id}&offset=";
+            string URL = $"https://api.vk.com/method/users.search?v={Version}&group_id={Group_Id.ToString()}&offset=";
             URL += $"{Offset.ToString()}&birth_day={Day}&birth_month={Month}&has_photo=0&fields=photo_200&count=1000&access_token={Access_Token}";
 
             UsersInfo Users = JsonConvert.DeserializeObject<UsersInfo>(MakeGetRequest(URL));
@@ -135,6 +141,22 @@ namespace VkScript_BD
             return Message;
         }
 
+        public void DeletePost()
+        {
+            string Post_ID;
+            using (StreamReader sr = new StreamReader("..\\..\\..\\Deleted.txt", System.Text.Encoding.Default))
+            {
+                Post_ID = sr.ReadLine();
+            }
+            if (Post_ID != null)
+            {
+                string URL = $"https://api.vk.com/method/wall.delete?v={Version}&owner_id={Owner_ID.ToString()}&post_id={Post_ID}&access_token={Access_Token}";
+                MakeGetRequest(URL);
+            }
+            else
+                return;
+        }
+
         public async Task MakeFinalRequest(string message)
         {
             string UploadServerURL = $"https://api.vk.com/method/photos.getWallUploadServer?v={Version}&access_token={Access_Token}&group_id={Group_Id.ToString()}";
@@ -156,10 +178,14 @@ namespace VkScript_BD
             }
 
             UploadResponse UploadResponse = JsonConvert.DeserializeObject<UploadResponse>(Response);
-            string SaveWallPhotoUrl = $"https://api.vk.com/method/photos.saveWallPhoto?v={Version}&access_token={Access_Token}&group_id={Group_Id.ToString()}&photo={UploadResponse.photo}&server={UploadResponse.server}&hash={UploadResponse.hash}";
+            string SaveWallPhotoUrl = $"https://api.vk.com/method/photos.saveWallPhoto?v={Version}&access_token={Access_Token}&group_id={Group_Id}&photo={UploadResponse.photo}&server={UploadResponse.server}&hash={UploadResponse.hash}";
             SaveWallPhoto WallPhoto = JsonConvert.DeserializeObject<SaveWallPhoto>(MakeGetRequest(SaveWallPhotoUrl));
 
-            MakePostRequest(WallPhoto.response[0].owner_id, WallPhoto.response[0].id, message);
+            WallPostResponse postResponse = JsonConvert.DeserializeObject<WallPostResponse>(MakePostRequest(WallPhoto.response[0].owner_id, WallPhoto.response[0].id, message));
+
+            DeletePost();
+
+            File.WriteAllText("..\\..\\..\\Deleted.txt", postResponse.response.post_id);
 
             GC.Collect();
             GC.WaitForPendingFinalizers();
